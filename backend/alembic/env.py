@@ -7,18 +7,14 @@ from alembic import context
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from app.config import settings
 from app.database import Base
 from app.models.models import *  # noqa — import all models so Alembic can detect them
 
-# Read DB URL directly from env — avoids requiring SECRET_KEY/JWT_SECRET_KEY at
-# migration time. Render injects DATABASE_URL (postgres://); normalise to postgresql://.
-_db_url = (
-    os.environ.get("SYNC_DATABASE_URL")
-    or os.environ.get("DATABASE_URL", "")
-).replace("postgresql+asyncpg://", "postgresql://").replace("postgres://", "postgresql://")
-
 config = context.config
-config.set_main_option("sqlalchemy.url", _db_url)
+
+# Use the sync URL property — always plain postgresql:// for psycopg2
+config.set_main_option("sqlalchemy.url", settings.sync_database_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
