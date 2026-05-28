@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "default-secret-key-change-in-production"
     ALLOWED_ORIGINS: str = "http://localhost:3000"
 
-    # Database
+    # Database — Render injects plain postgresql:// for both; we fix the scheme below
     DATABASE_URL: str = ""
     SYNC_DATABASE_URL: str = ""
 
@@ -64,6 +64,28 @@ class Settings(BaseSettings):
     NSSF_EMPLOYEE_RATE: float = 0.06
     NSSF_EMPLOYER_RATE: float = 0.06
     PAYE_PERSONAL_RELIEF: float = 2400.0
+
+    @property
+    def async_database_url(self) -> str:
+        """Always returns an asyncpg URL for SQLAlchemy async engine."""
+        url = self.DATABASE_URL or self.SYNC_DATABASE_URL
+        # Replace any plain postgresql:// or postgres:// with the async driver
+        for prefix in ("postgresql://", "postgres://"):
+            if url.startswith(prefix):
+                return "postgresql+asyncpg://" + url[len(prefix):]
+        return url  # already has +asyncpg or is empty
+
+    @property
+    def sync_database_url(self) -> str:
+        """Always returns a plain psycopg2 URL for Alembic / Celery."""
+        url = self.SYNC_DATABASE_URL or self.DATABASE_URL
+        # Strip +asyncpg if someone set the async URL for both vars
+        url = url.replace("postgresql+asyncpg://", "postgresql://")
+        url = url.replace("postgres+asyncpg://", "postgresql://")
+        # Normalise postgres:// → postgresql:// (psycopg2 needs the long form)
+        if url.startswith("postgres://"):
+            url = "postgresql://" + url[len("postgres://"):]
+        return url
 
     @property
     def allowed_origins_list(self) -> List[str]:
