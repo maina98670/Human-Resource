@@ -1,6 +1,11 @@
 from datetime import datetime, timedelta
 from typing import Optional
 import uuid
+import warnings
+
+# Suppress passlib/bcrypt version warning
+warnings.filterwarnings("ignore", ".*error reading bcrypt version.*")
+warnings.filterwarnings("ignore", ".*bcrypt.*")
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -12,10 +17,15 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
+    # bcrypt max is 72 bytes — truncate to be safe
+    if isinstance(password, str):
+        password = password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
     return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
+    if isinstance(plain_password, str):
+        plain_password = plain_password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
     return pwd_context.verify(plain_password, hashed_password)
 
 
