@@ -6,13 +6,9 @@ services:
     plan: starter
     rootDir: backend
     buildCommand: pip install -r requirements.txt
-    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2
+    startCommand: bash start.sh
     healthCheckPath: /health
     envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: hospital-hr-db
-          property: connectionString
       - key: SYNC_DATABASE_URL
         fromDatabase:
           name: hospital-hr-db
@@ -115,10 +111,6 @@ databases:
 envVarGroups:
   - name: hospital-hr-env
     envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: hospital-hr-db
-          property: connectionString
       - key: SYNC_DATABASE_URL
         fromDatabase:
           name: hospital-hr-db
