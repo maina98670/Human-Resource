@@ -10,6 +10,7 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import AsyncSessionLocal, create_tables
 from app.models.models import (
@@ -23,6 +24,13 @@ from datetime import date
 async def seed():
     await create_tables()
     async with AsyncSessionLocal() as db:
+
+        # ── Skip if already seeded ────────────────────────────────
+        result = await db.execute(select(User).limit(1))
+        if result.scalar_one_or_none():
+            print("✅ Database already seeded — skipping.")
+            return
+
         print("🌱 Seeding database...")
 
         # ── Super Admin ──────────────────────────────────────────
