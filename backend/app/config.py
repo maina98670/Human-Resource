@@ -7,12 +7,12 @@ class Settings(BaseSettings):
     APP_NAME: str = "Hospital HR System"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
-    SECRET_KEY: str
+    SECRET_KEY: str = "default-secret-key-change-in-production"
     ALLOWED_ORIGINS: str = "http://localhost:3000"
 
     # Database
-    DATABASE_URL: str
-    SYNC_DATABASE_URL: str
+    DATABASE_URL: str = ""
+    SYNC_DATABASE_URL: str = ""
 
     # Redis / Celery
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
 
     # JWT
-    JWT_SECRET_KEY: str
+    JWT_SECRET_KEY: str = "default-jwt-secret-key-change-in-production"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -72,7 +72,9 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        env_file_encoding = "utf-8"
         case_sensitive = True
+        extra = "ignore"
 
 
 settings = Settings()
