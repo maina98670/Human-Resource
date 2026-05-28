@@ -5,6 +5,7 @@ services:
     env: python
     plan: starter
     rootDir: backend
+    pythonVersion: "3.11.9"
     buildCommand: pip install -r requirements.txt && alembic upgrade head
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2
     healthCheckPath: /health
@@ -59,6 +60,7 @@ services:
     env: python
     plan: starter
     rootDir: backend
+    pythonVersion: "3.11.9"
     buildCommand: pip install -r requirements.txt
     startCommand: celery -A app.tasks.celery_tasks.celery_app worker --loglevel=info --concurrency=2
     envVars:
@@ -70,6 +72,7 @@ services:
     env: python
     plan: starter
     rootDir: backend
+    pythonVersion: "3.11.9"
     buildCommand: pip install -r requirements.txt
     startCommand: celery -A app.tasks.celery_tasks.celery_app beat --loglevel=info
     envVars:
