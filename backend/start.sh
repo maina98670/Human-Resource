@@ -10,5 +10,8 @@ export DATABASE_URL=$(echo "$SYNC_DATABASE_URL" | sed 's|^postgresql://|postgres
 echo "Running migrations..."
 alembic upgrade head
 
+echo "Seeding database (skips if already seeded)..."
+python scripts/seed.py || echo "Seed skipped or already done."
+
 echo "Starting server..."
 exec uvicorn app.main:app --host 0.0.0.0 --port "$PORT" --workers 2
