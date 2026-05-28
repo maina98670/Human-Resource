@@ -3,9 +3,9 @@ from sqlalchemy.orm import DeclarativeBase
 from app.config import settings
 
 
-# Async engine for all API operations
+# Async engine for all API operations — always uses asyncpg driver
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    settings.async_database_url,
     echo=settings.DEBUG,
     pool_pre_ping=True,
     pool_size=10,
