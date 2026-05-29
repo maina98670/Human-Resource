@@ -27,13 +27,13 @@ class Settings(BaseSettings):
 
     # AI Providers — Gemini → OpenAI → Groq (fallback chain)
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-1.5-flash"
+    GEMINI_MODEL: str = "gemini-2.0-flash"
 
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"
 
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "llama3-70b-8192"
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
 
     # Order: comma-separated e.g. "gemini,openai,groq"
     AI_PROVIDER_CHAIN: str = "gemini,openai,groq"
