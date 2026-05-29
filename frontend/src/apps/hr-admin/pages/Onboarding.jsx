@@ -9,6 +9,36 @@ import { useNavigate } from 'react-router-dom'
 
 const STEPS = ['AI Parse', 'Personal Info', 'Employment', 'Review & Submit']
 
+// ── Moved OUTSIDE the main component to prevent remount on every keystroke ──
+const InputField = ({ label, field, type = 'text', required = false, form, onChange }) => (
+  <div>
+    <label className="label">{label}{required && <span className="text-red-400 ml-0.5">*</span>}</label>
+    <input
+      type={type}
+      value={form[field]}
+      onChange={e => onChange(field, e.target.value)}
+      className="input"
+      required={required}
+    />
+  </div>
+)
+
+const SelectField = ({ label, field, options, required = false, form, onChange, disabled = false, placeholder = 'Select...' }) => (
+  <div>
+    <label className="label">{label}{required && <span className="text-red-400 ml-0.5">*</span>}</label>
+    <select
+      value={form[field]}
+      onChange={e => onChange(field, e.target.value)}
+      className="input"
+      required={required}
+      disabled={disabled}
+    >
+      <option value="">{placeholder}</option>
+      {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+    </select>
+  </div>
+)
+
 export default function OnboardingPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -27,25 +57,24 @@ export default function OnboardingPage() {
     bank_name: '', bank_account_number: '', mpesa_number: '',
   })
 
-  // Load branches
   const { data: branches, loading: branchesLoading } = useAsync(
     useCallback(() => branchAPI.list(), [])
   )
 
-  // Load departments for selected branch
   const { data: departments, loading: deptsLoading } = useAsync(
     useCallback(
-      () => selectedBranchId ? departmentAPI.list(selectedBranchId) : Promise.resolve({ data: [] }),
+      () => selectedBranchId
+        ? departmentAPI.list(selectedBranchId)
+        : Promise.resolve({ data: [] }),
       [selectedBranchId]
     )
   )
 
-  const set = (field, value) => setForm(f => ({ ...f, [field]: value }))
+  const handleChange = (field, value) => setForm(f => ({ ...f, [field]: value }))
 
   const handleBranchChange = (branchId) => {
     setSelectedBranchId(branchId)
-    set('branch_id', branchId)
-    set('department_id', '') // reset dept when branch changes
+    setForm(f => ({ ...f, branch_id: branchId, department_id: '' }))
   }
 
   const parseCV = async () => {
@@ -91,11 +120,7 @@ export default function OnboardingPage() {
   const submit = async () => {
     setSubmitting(true)
     try {
-      // Ensure phone is set (required by backend User model)
-      const payload = {
-        ...form,
-        phone: form.phone || form.personal_phone,
-      }
+      const payload = { ...form, phone: form.phone || form.personal_phone }
       const res = await staffAPI.create(payload)
       toast.success(`Staff onboarded! Staff No: ${res.data.staff_number}`)
       navigate('/hr-admin/staff')
@@ -108,24 +133,6 @@ export default function OnboardingPage() {
       }
     } finally { setSubmitting(false) }
   }
-
-  const InputField = ({ label, field, type = 'text', required = false }) => (
-    <div>
-      <label className="label">{label}{required && <span className="text-red-400 ml-0.5">*</span>}</label>
-      <input type={type} value={form[field]} onChange={e => set(field, e.target.value)}
-        className="input" required={required} />
-    </div>
-  )
-
-  const SelectField = ({ label, field, options, required = false }) => (
-    <div>
-      <label className="label">{label}{required && <span className="text-red-400 ml-0.5">*</span>}</label>
-      <select value={form[field]} onChange={e => set(field, e.target.value)} className="input" required={required}>
-        <option value="">Select...</option>
-        {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-      </select>
-    </div>
-  )
 
   return (
     <div className="space-y-6 animate-fade-in max-w-3xl">
@@ -151,6 +158,7 @@ export default function OnboardingPage() {
       </div>
 
       <div className="card space-y-5">
+
         {/* Step 0: AI Parse */}
         {step === 0 && (
           <>
@@ -160,8 +168,13 @@ export default function OnboardingPage() {
             <p className="text-sm text-text-secondary">
               Paste the CV text below and let AI pre-fill the staff profile. You can skip this step and fill manually.
             </p>
-            <textarea value={cvText} onChange={e => setCvText(e.target.value)}
-              className="input resize-none" rows={8} placeholder="Paste full CV / resume text here..." />
+            <textarea
+              value={cvText}
+              onChange={e => setCvText(e.target.value)}
+              className="input resize-none"
+              rows={8}
+              placeholder="Paste full CV / resume text here..."
+            />
             <div className="flex gap-3">
               <button onClick={() => setStep(1)} className="btn-secondary">Skip — Fill Manually</button>
               <button onClick={parseCV} disabled={parsing || !cvText} className="btn-primary">
@@ -176,14 +189,17 @@ export default function OnboardingPage() {
           <>
             <p className="font-display font-semibold text-white">Personal Information</p>
             <div className="grid grid-cols-2 gap-4">
-              <InputField label="First Name" field="first_name" required />
-              <InputField label="Middle Name" field="middle_name" />
-              <InputField label="Last Name" field="last_name" required />
-              <InputField label="Date of Birth" field="date_of_birth" type="date" required />
-              <SelectField label="Gender" field="gender" required options={[['male','Male'],['female','Female'],['other','Other']]} />
-              <InputField label="National ID" field="national_id" required />
-              <InputField label="Personal Phone" field="personal_phone" required />
-              <InputField label="Work Email" field="email" type="email" required />
+              <InputField label="First Name" field="first_name" required form={form} onChange={handleChange} />
+              <InputField label="Middle Name" field="middle_name" form={form} onChange={handleChange} />
+              <InputField label="Last Name" field="last_name" required form={form} onChange={handleChange} />
+              <InputField label="Date of Birth" field="date_of_birth" type="date" required form={form} onChange={handleChange} />
+              <SelectField
+                label="Gender" field="gender" required form={form} onChange={handleChange}
+                options={[['male','Male'],['female','Female'],['other','Other']]}
+              />
+              <InputField label="National ID" field="national_id" required form={form} onChange={handleChange} />
+              <InputField label="Personal Phone" field="personal_phone" required form={form} onChange={handleChange} />
+              <InputField label="Work Email" field="email" type="email" required form={form} onChange={handleChange} />
             </div>
           </>
         )}
@@ -193,62 +209,83 @@ export default function OnboardingPage() {
           <>
             <p className="font-display font-semibold text-white">Employment Details</p>
             <div className="grid grid-cols-2 gap-4">
+
               {/* Branch dropdown */}
               <div>
                 <label className="label">Branch <span className="text-red-400">*</span></label>
-                {branchesLoading ? <div className="input flex items-center gap-2 text-text-muted"><Spinner size="sm" /> Loading...</div> : (
-                  <select
-                    value={form.branch_id}
-                    onChange={e => handleBranchChange(e.target.value)}
-                    className="input"
-                    required
-                  >
-                    <option value="">Select branch...</option>
-                    {(branches || []).map(b => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
-                    ))}
-                  </select>
-                )}
+                {branchesLoading
+                  ? <div className="input flex items-center gap-2 text-text-muted"><Spinner size="sm" /> Loading...</div>
+                  : (
+                    <select
+                      value={form.branch_id}
+                      onChange={e => handleBranchChange(e.target.value)}
+                      className="input"
+                      required
+                    >
+                      <option value="">Select branch...</option>
+                      {(branches || []).map(b => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                  )
+                }
               </div>
 
               {/* Department dropdown */}
               <div>
                 <label className="label">Department <span className="text-red-400">*</span></label>
-                {deptsLoading ? <div className="input flex items-center gap-2 text-text-muted"><Spinner size="sm" /> Loading...</div> : (
-                  <select
-                    value={form.department_id}
-                    onChange={e => set('department_id', e.target.value)}
-                    className="input"
-                    required
-                    disabled={!form.branch_id}
-                  >
-                    <option value="">{form.branch_id ? 'Select department...' : 'Select branch first'}</option>
-                    {(departments || []).map(d => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
-                    ))}
-                  </select>
-                )}
+                {deptsLoading
+                  ? <div className="input flex items-center gap-2 text-text-muted"><Spinner size="sm" /> Loading...</div>
+                  : (
+                    <select
+                      value={form.department_id}
+                      onChange={e => handleChange('department_id', e.target.value)}
+                      className="input"
+                      required
+                      disabled={!form.branch_id}
+                    >
+                      <option value="">{form.branch_id ? 'Select department...' : 'Select branch first'}</option>
+                      {(departments || []).map(d => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
+                      ))}
+                    </select>
+                  )
+                }
               </div>
 
-              <SelectField label="Category" field="category" required options={[['clinical','Clinical'],['administrative','Administrative'],['support','Support']]} />
-              <SelectField label="Clinical Sub-Role" field="clinical_sub_role" options={[
-                ['doctor','Doctor'],['nurse','Nurse'],['pharmacist','Pharmacist'],
-                ['lab_technician','Lab Technician'],['radiologist','Radiologist'],
-                ['physiotherapist','Physiotherapist'],['other','Other'],
-              ]} />
-              <SelectField label="Employment Type" field="employment_type" required options={[
-                ['permanent','Permanent'],['contract','Contract'],['locum','Locum'],
-                ['agency','Agency'],['intern','Intern'],
-              ]} />
-              <InputField label="Job Title" field="job_title" required />
-              <InputField label="Job Grade" field="job_grade" />
-              <InputField label="Hire Date" field="hire_date" type="date" required />
-              <InputField label="M-Pesa Number" field="mpesa_number" />
-              <InputField label="Bank Name" field="bank_name" />
-              <InputField label="Account Number" field="bank_account_number" />
+              <SelectField
+                label="Category" field="category" required form={form} onChange={handleChange}
+                options={[['clinical','Clinical'],['administrative','Administrative'],['support','Support']]}
+              />
+              <SelectField
+                label="Clinical Sub-Role" field="clinical_sub_role" form={form} onChange={handleChange}
+                options={[
+                  ['doctor','Doctor'],['nurse','Nurse'],['pharmacist','Pharmacist'],
+                  ['lab_technician','Lab Technician'],['radiologist','Radiologist'],
+                  ['physiotherapist','Physiotherapist'],['other','Other'],
+                ]}
+              />
+              <SelectField
+                label="Employment Type" field="employment_type" required form={form} onChange={handleChange}
+                options={[
+                  ['permanent','Permanent'],['contract','Contract'],['locum','Locum'],
+                  ['agency','Agency'],['intern','Intern'],
+                ]}
+              />
+              <InputField label="Job Title" field="job_title" required form={form} onChange={handleChange} />
+              <InputField label="Job Grade" field="job_grade" form={form} onChange={handleChange} />
+              <InputField label="Hire Date" field="hire_date" type="date" required form={form} onChange={handleChange} />
+              <InputField label="M-Pesa Number" field="mpesa_number" form={form} onChange={handleChange} />
+              <InputField label="Bank Name" field="bank_name" form={form} onChange={handleChange} />
+              <InputField label="Account Number" field="bank_account_number" form={form} onChange={handleChange} />
               <div className="col-span-2">
                 <label className="label">Temporary Password</label>
-                <input type="text" value={form.temp_password} onChange={e => set('temp_password', e.target.value)} className="input font-mono" />
+                <input
+                  type="text"
+                  value={form.temp_password}
+                  onChange={e => handleChange('temp_password', e.target.value)}
+                  className="input font-mono"
+                />
                 <p className="text-xs text-text-muted mt-1">Staff will be asked to change on first login</p>
               </div>
             </div>
@@ -269,7 +306,7 @@ export default function OnboardingPage() {
                 ['Category', form.category],
                 ['Employment Type', form.employment_type],
                 ['Hire Date', form.hire_date],
-              ].filter(([,v]) => v).map(([k, v]) => (
+              ].filter(([, v]) => v).map(([k, v]) => (
                 <div key={k} className="p-3 bg-surface-700 rounded-lg">
                   <p className="text-xs text-text-muted">{k}</p>
                   <p className="text-white mt-0.5 capitalize">{v}</p>
@@ -291,9 +328,7 @@ export default function OnboardingPage() {
           </button>
           {step < 3 ? (
             <button
-              onClick={() => {
-                if (validateStep(step)) setStep(s => s + 1)
-              }}
+              onClick={() => { if (validateStep(step)) setStep(s => s + 1) }}
               className="btn-primary"
             >
               Next <ChevronRight size={15} />
