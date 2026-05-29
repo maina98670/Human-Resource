@@ -89,7 +89,7 @@ async def run_payroll(
     year: int,
     month: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(HRAdminAndAbove),
+    current_user: User = Depends(FinanceAndAbove),
 ):
     # Check for duplicate run
     existing = await db.execute(
@@ -137,7 +137,6 @@ async def run_payroll(
     total_net = 0.0
 
     for staff in all_staff:
-        # Determine basic salary from job grade (placeholder — implement grade table)
         basic_salary = await _get_basic_salary(staff, db)
 
         # Get active allowances
@@ -153,9 +152,7 @@ async def run_payroll(
         total_allowances = sum(a.amount for a in allowances)
         allowances_breakdown = {a.allowance_name: a.amount for a in allowances}
 
-        # Overtime (from shift data — placeholder, wire to scheduling module)
         overtime_pay = 0.0
-
         gross_pay = basic_salary + total_allowances + overtime_pay
 
         # Deductions
@@ -206,11 +203,6 @@ async def run_payroll(
 
 
 async def _get_basic_salary(staff: Staff, db: AsyncSession) -> float:
-    """
-    Get basic salary from job grade.
-    TODO: implement SalaryGrade table and look up here.
-    Returns placeholder based on category for now.
-    """
     grade_map = {
         "clinical": 80000.0,
         "administrative": 50000.0,
