@@ -1,7 +1,9 @@
-import { useState } from 'react'
-import { staffAPI, aiAPI } from '../../../shared/services/api'
-import { SectionHeader, Spinner } from '../../../shared/components'
+import { useState, useCallback } from 'react'
+import { staffAPI, aiAPI, branchAPI, departmentAPI } from '../../../shared/services/api'
+import { SectionHeader, Spinner, PageLoader } from '../../../shared/components'
 import { Brain, UserPlus, CheckCircle, ChevronRight, ChevronLeft } from 'lucide-react'
+import { useAsync } from '../../../shared/hooks'
+import { useAuth } from '../../../shared/context/AuthContext'
 import toast from 'react-hot-toast'
 import { useNavigate } from 'react-router-dom'
 
@@ -9,21 +11,42 @@ const STEPS = ['AI Parse', 'Personal Info', 'Employment', 'Review & Submit']
 
 export default function OnboardingPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [step, setStep] = useState(0)
   const [cvText, setCvText] = useState('')
   const [parsing, setParseLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [selectedBranchId, setSelectedBranchId] = useState(user?.branch_id || '')
   const [form, setForm] = useState({
     first_name: '', middle_name: '', last_name: '', date_of_birth: '',
     gender: '', national_id: '', personal_phone: '', email: '', phone: '',
     temp_password: 'HospitalHR@2024!',
-    branch_id: '', department_id: '', category: 'clinical',
+    branch_id: user?.branch_id || '', department_id: '', category: 'clinical',
     clinical_sub_role: '', employment_type: 'permanent',
     job_title: '', job_grade: '', hire_date: '',
     bank_name: '', bank_account_number: '', mpesa_number: '',
   })
 
+  // Load branches
+  const { data: branches, loading: branchesLoading } = useAsync(
+    useCallback(() => branchAPI.list(), [])
+  )
+
+  // Load departments for selected branch
+  const { data: departments, loading: deptsLoading } = useAsync(
+    useCallback(
+      () => selectedBranchId ? departmentAPI.list(selectedBranchId) : Promise.resolve({ data: [] }),
+      [selectedBranchId]
+    )
+  )
+
   const set = (field, value) => setForm(f => ({ ...f, [field]: value }))
+
+  const handleBranchChange = (branchId) => {
+    setSelectedBranchId(branchId)
+    set('branch_id', branchId)
+    set('department_id', '') // reset dept when branch changes
+  }
 
   const parseCV = async () => {
     if (!cvText.trim()) return toast.error('Paste CV text first')
@@ -47,20 +70,48 @@ export default function OnboardingPage() {
     finally { setParseLoading(false) }
   }
 
+  const validateStep = (currentStep) => {
+    if (currentStep === 1) {
+      if (!form.first_name || !form.last_name || !form.date_of_birth ||
+          !form.gender || !form.national_id || !form.personal_phone || !form.email) {
+        toast.error('Please fill all required fields')
+        return false
+      }
+    }
+    if (currentStep === 2) {
+      if (!form.branch_id || !form.department_id || !form.category ||
+          !form.employment_type || !form.job_title || !form.hire_date) {
+        toast.error('Please fill all required fields')
+        return false
+      }
+    }
+    return true
+  }
+
   const submit = async () => {
     setSubmitting(true)
     try {
-      const res = await staffAPI.create(form)
+      // Ensure phone is set (required by backend User model)
+      const payload = {
+        ...form,
+        phone: form.phone || form.personal_phone,
+      }
+      const res = await staffAPI.create(payload)
       toast.success(`Staff onboarded! Staff No: ${res.data.staff_number}`)
       navigate('/hr-admin/staff')
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Submission failed')
+      const detail = err.response?.data?.detail
+      if (Array.isArray(detail)) {
+        toast.error(detail.map(d => d.msg).join(', '))
+      } else {
+        toast.error(detail || 'Submission failed')
+      }
     } finally { setSubmitting(false) }
   }
 
   const InputField = ({ label, field, type = 'text', required = false }) => (
     <div>
-      <label className="label">{label}{required && ' *'}</label>
+      <label className="label">{label}{required && <span className="text-red-400 ml-0.5">*</span>}</label>
       <input type={type} value={form[field]} onChange={e => set(field, e.target.value)}
         className="input" required={required} />
     </div>
@@ -68,7 +119,7 @@ export default function OnboardingPage() {
 
   const SelectField = ({ label, field, options, required = false }) => (
     <div>
-      <label className="label">{label}{required && ' *'}</label>
+      <label className="label">{label}{required && <span className="text-red-400 ml-0.5">*</span>}</label>
       <select value={form[field]} onChange={e => set(field, e.target.value)} className="input" required={required}>
         <option value="">Select...</option>
         {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -142,8 +193,43 @@ export default function OnboardingPage() {
           <>
             <p className="font-display font-semibold text-white">Employment Details</p>
             <div className="grid grid-cols-2 gap-4">
-              <InputField label="Branch ID" field="branch_id" required />
-              <InputField label="Department ID" field="department_id" required />
+              {/* Branch dropdown */}
+              <div>
+                <label className="label">Branch <span className="text-red-400">*</span></label>
+                {branchesLoading ? <div className="input flex items-center gap-2 text-text-muted"><Spinner size="sm" /> Loading...</div> : (
+                  <select
+                    value={form.branch_id}
+                    onChange={e => handleBranchChange(e.target.value)}
+                    className="input"
+                    required
+                  >
+                    <option value="">Select branch...</option>
+                    {(branches || []).map(b => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* Department dropdown */}
+              <div>
+                <label className="label">Department <span className="text-red-400">*</span></label>
+                {deptsLoading ? <div className="input flex items-center gap-2 text-text-muted"><Spinner size="sm" /> Loading...</div> : (
+                  <select
+                    value={form.department_id}
+                    onChange={e => set('department_id', e.target.value)}
+                    className="input"
+                    required
+                    disabled={!form.branch_id}
+                  >
+                    <option value="">{form.branch_id ? 'Select department...' : 'Select branch first'}</option>
+                    {(departments || []).map(d => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
               <SelectField label="Category" field="category" required options={[['clinical','Clinical'],['administrative','Administrative'],['support','Support']]} />
               <SelectField label="Clinical Sub-Role" field="clinical_sub_role" options={[
                 ['doctor','Doctor'],['nurse','Nurse'],['pharmacist','Pharmacist'],
@@ -192,7 +278,7 @@ export default function OnboardingPage() {
             </div>
             <div className="p-3 bg-brand-500/10 border border-brand-500/20 rounded-xl">
               <p className="text-xs text-brand-400">
-                A user account will be created and credentials emailed to the staff member.
+                A user account will be created. Staff can log in immediately using the temporary password.
               </p>
             </div>
           </>
@@ -204,7 +290,12 @@ export default function OnboardingPage() {
             <ChevronLeft size={15} /> Back
           </button>
           {step < 3 ? (
-            <button onClick={() => setStep(s => s + 1)} className="btn-primary">
+            <button
+              onClick={() => {
+                if (validateStep(step)) setStep(s => s + 1)
+              }}
+              className="btn-primary"
+            >
               Next <ChevronRight size={15} />
             </button>
           ) : (
