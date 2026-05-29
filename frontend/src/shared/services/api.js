@@ -97,6 +97,8 @@ export const leaveAPI = {
 // ─── Scheduling ───────────────────────────────────────────────────────────────
 export const scheduleAPI = {
   createShift: (data) => api.post('/shifts', data),
+  listShifts: (dept_id, from_date, to_date) =>
+    api.get('/shifts', { params: { department_id: dept_id, from_date, to_date } }),
   rota: (dept_id, week_start) => api.get(`/shifts/rota/${dept_id}`, { params: { week_start } }),
   gaps: (dept_id, from_date, to_date) =>
     api.get(`/shifts/gaps/${dept_id}`, { params: { from_date, to_date } }),
