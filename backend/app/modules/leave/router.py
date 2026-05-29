@@ -38,6 +38,21 @@ class LeaveBalanceSetRequest(BaseModel):
     year: int
 
 
+# ─── Default entitlements per leave type ───────────────────
+# These are applied automatically when a staff member has no
+# balance record for the requested leave type and year.
+
+DEFAULT_ENTITLEMENTS: dict[LeaveType, float] = {
+    LeaveType.ANNUAL:        21.0,   # 21 working days per year
+    LeaveType.SICK:           0.0,   # Unlimited / no balance check
+    LeaveType.MATERNITY:     90.0,   # 3 months
+    LeaveType.PATERNITY:     14.0,   # 2 weeks
+    LeaveType.COMPASSIONATE:  3.0,
+    LeaveType.STUDY:          5.0,
+    LeaveType.UNPAID:         0.0,   # No balance check
+}
+
+
 # ─── Helpers ───────────────────────────────────────────────
 
 def count_working_days(start: date, end: date) -> float:
@@ -58,6 +73,45 @@ async def get_staff_from_user(db: AsyncSession, user: User) -> Staff:
     if not staff:
         raise HTTPException(status_code=404, detail="Staff profile not found for this user")
     return staff
+
+
+async def get_or_create_leave_balance(
+    db: AsyncSession,
+    staff_id: uuid.UUID,
+    leave_type: LeaveType,
+    year: int,
+) -> LeaveBalance:
+    """
+    Fetch the leave balance for a staff member.
+    If no record exists yet, auto-create one with the default entitlement
+    so that new staff can apply for leave without HR having to manually
+    initialise every balance first.
+    """
+    result = await db.execute(
+        select(LeaveBalance).where(
+            and_(
+                LeaveBalance.staff_id == staff_id,
+                LeaveBalance.leave_type == leave_type,
+                LeaveBalance.year == year,
+            )
+        )
+    )
+    balance = result.scalar_one_or_none()
+
+    if not balance:
+        entitled = DEFAULT_ENTITLEMENTS.get(leave_type, 0.0)
+        balance = LeaveBalance(
+            staff_id=staff_id,
+            leave_type=leave_type,
+            entitled_days=entitled,
+            used_days=0.0,
+            carried_over=0.0,
+            year=year,
+        )
+        db.add(balance)
+        await db.flush()  # assign PK without committing the outer txn
+
+    return balance
 
 
 # ─── Endpoints ─────────────────────────────────────────────
@@ -81,24 +135,18 @@ async def apply_leave(
 
     # Check leave balance for non-sick and non-unpaid
     if payload.leave_type not in (LeaveType.SICK, LeaveType.UNPAID):
-        result = await db.execute(
-            select(LeaveBalance).where(
-                and_(
-                    LeaveBalance.staff_id == staff.id,
-                    LeaveBalance.leave_type == payload.leave_type,
-                    LeaveBalance.year == payload.start_date.year,
-                )
-            )
+        balance = await get_or_create_leave_balance(
+            db, staff.id, payload.leave_type, payload.start_date.year
         )
-        balance = result.scalar_one_or_none()
-        if not balance:
-            raise HTTPException(status_code=400, detail="No leave balance found for this leave type")
 
         available = balance.entitled_days + balance.carried_over - balance.used_days
         if days_requested > available:
             raise HTTPException(
                 status_code=400,
-                detail=f"Insufficient leave balance. Available: {available} days, Requested: {days_requested} days",
+                detail=(
+                    f"Insufficient leave balance. "
+                    f"Available: {available} days, Requested: {days_requested} days"
+                ),
             )
 
     # Check for overlapping leave
@@ -181,12 +229,44 @@ async def get_leave_balance(
         if not own_staff or own_staff.id != staff_id:
             raise HTTPException(status_code=403, detail="Access denied")
 
-    result = await db.execute(
+    # Return existing balances; also auto-populate missing ones so the
+    # balance page always shows all leave types rather than an empty list.
+    existing_result = await db.execute(
         select(LeaveBalance).where(
             and_(LeaveBalance.staff_id == staff_id, LeaveBalance.year == year)
         )
     )
-    balances = result.scalars().all()
+    existing = {b.leave_type: b for b in existing_result.scalars().all()}
+
+    # Fill in any missing leave types with defaults (skip SICK & UNPAID — no balance needed)
+    needs_flush = False
+    for lt in LeaveType:
+        if lt in (LeaveType.SICK, LeaveType.UNPAID):
+            continue
+        if lt not in existing:
+            b = LeaveBalance(
+                staff_id=staff_id,
+                leave_type=lt,
+                entitled_days=DEFAULT_ENTITLEMENTS.get(lt, 0.0),
+                used_days=0.0,
+                carried_over=0.0,
+                year=year,
+            )
+            db.add(b)
+            existing[lt] = b
+            needs_flush = True
+
+    if needs_flush:
+        await db.commit()
+        # Re-fetch to get DB-assigned values
+        refreshed = await db.execute(
+            select(LeaveBalance).where(
+                and_(LeaveBalance.staff_id == staff_id, LeaveBalance.year == year)
+            )
+        )
+        balances = refreshed.scalars().all()
+    else:
+        balances = list(existing.values())
 
     return [
         {
