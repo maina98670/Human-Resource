@@ -1,3 +1,5 @@
+import BranchesPage from './apps/super-admin/pages/Branches'
+import AllStaffPage from './apps/super-admin/pages/AllStaff'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './shared/context/AuthContext'
@@ -85,8 +87,8 @@ function AppRoutes() {
         </RequireAuth>
       }>
         <Route index element={<SuperAdminDashboard />} />
-        <Route path="branches" element={<div className="text-white p-4">Branches management — coming soon</div>} />
-        <Route path="staff" element={<div className="text-white p-4">All staff view — coming soon</div>} />
+        <Route path="branches" element={<BranchesPage />} />
+        <Route path="staff" element={<AllStaffPage />} />
         <Route path="analytics" element={<AnalyticsPage />} />
         <Route path="compliance" element={<CredentialsPage />} />
         <Route path="notifications" element={<HRNotificationsPage />} />
