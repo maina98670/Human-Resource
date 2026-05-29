@@ -184,6 +184,73 @@ async def apply_leave(
     }
 
 
+@router.get("/pending", summary="All pending leave requests (HR / Dept Head dashboard view)")
+async def get_pending_leave_requests(
+    branch_id: Optional[uuid.UUID] = Query(None),
+    department_id: Optional[uuid.UUID] = Query(None),
+    status_filter: Optional[str] = Query(None, description="pending | approved_by_head | all"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(DeptHeadAndAbove),
+):
+    # Determine which statuses to show
+    if status_filter == "approved_by_head":
+        statuses = [LeaveStatus.APPROVED_BY_HEAD]
+    elif status_filter == "all":
+        statuses = [LeaveStatus.PENDING, LeaveStatus.APPROVED_BY_HEAD,
+                    LeaveStatus.APPROVED, LeaveStatus.REJECTED]
+    else:  # default: both actionable states
+        statuses = [LeaveStatus.PENDING, LeaveStatus.APPROVED_BY_HEAD]
+
+    conditions = [LeaveRequest.status.in_(statuses)]
+
+    # Scope to branch for non-super-admins
+    scope_branch = branch_id or (
+        current_user.branch_id if current_user.role != UserRole.SUPER_ADMIN else None
+    )
+
+    query = (
+        select(LeaveRequest, Staff)
+        .join(Staff, LeaveRequest.staff_id == Staff.id)
+        .where(and_(*conditions))
+    )
+
+    if scope_branch:
+        query = query.where(Staff.branch_id == scope_branch)
+
+    # Department heads only see their own department
+    if department_id:
+        query = query.where(Staff.department_id == department_id)
+    elif current_user.role == UserRole.DEPARTMENT_HEAD and current_user.department_id:
+        query = query.where(Staff.department_id == current_user.department_id)
+
+    query = query.order_by(LeaveRequest.created_at.asc())
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    return [
+        {
+            "id": str(row.LeaveRequest.id),
+            "staff_id": str(row.Staff.id),
+            "staff_name": f"{row.Staff.first_name} {row.Staff.last_name}",
+            "staff_number": row.Staff.staff_number,
+            "department_id": str(row.Staff.department_id),
+            "leave_type": row.LeaveRequest.leave_type.value,
+            "start_date": str(row.LeaveRequest.start_date),
+            "end_date": str(row.LeaveRequest.end_date),
+            "days_requested": row.LeaveRequest.days_requested,
+            "reason": row.LeaveRequest.reason,
+            "handover_notes": row.LeaveRequest.handover_notes,
+            "status": row.LeaveRequest.status.value,
+            "dept_head_comment": row.LeaveRequest.dept_head_comment,
+            "dept_head_approved_at": str(row.LeaveRequest.dept_head_approved_at)
+                if row.LeaveRequest.dept_head_approved_at else None,
+            "created_at": str(row.LeaveRequest.created_at),
+        }
+        for row in rows
+    ]
+
+
 @router.get("/my-requests", summary="Get my leave requests")
 async def my_leave_requests(
     year: Optional[int] = Query(None),
@@ -318,8 +385,8 @@ async def hr_approve(
     if not leave:
         raise HTTPException(status_code=404, detail="Leave request not found")
 
-    if leave.status != LeaveStatus.APPROVED_BY_HEAD:
-        raise HTTPException(status_code=400, detail="Leave must be approved by department head first")
+    if leave.status not in (LeaveStatus.PENDING, LeaveStatus.APPROVED_BY_HEAD):
+        raise HTTPException(status_code=400, detail="Leave request is not in an approvable state")
 
     leave.hr_admin_id = current_user.id
     leave.hr_approved_at = datetime.utcnow()
