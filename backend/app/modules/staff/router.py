@@ -10,7 +10,8 @@ from pydantic import BaseModel, EmailStr
 from app.database import get_db
 from app.models.models import (
     Staff, User, UserRole, StaffCategory, ClinicalSubRole,
-    EmploymentType, StaffStatus, TransferRecord
+    EmploymentType, StaffStatus, TransferRecord,
+    LeaveBalance, LeaveType
 )
 from app.utils.auth_utils import hash_password
 from app.utils.dependencies import get_current_user, HRAdminAndAbove, DeptHeadAndAbove
@@ -168,6 +169,29 @@ async def create_staff(
         mpesa_number=payload.mpesa_number,
     )
     db.add(staff)
+    await db.flush()  # get staff.id before committing
+
+    # ── Seed default leave balances for the new staff member ──────────────────
+    # Locum/Agency staff are not entitled to leave balances.
+    if payload.employment_type not in (EmploymentType.LOCUM, EmploymentType.AGENCY):
+        current_year = date.today().year
+        DEFAULT_ENTITLEMENTS = {
+            LeaveType.ANNUAL:        21.0,
+            LeaveType.MATERNITY:     90.0,
+            LeaveType.PATERNITY:     14.0,
+            LeaveType.COMPASSIONATE:  3.0,
+            LeaveType.STUDY:          5.0,
+        }
+        for leave_type, entitled_days in DEFAULT_ENTITLEMENTS.items():
+            db.add(LeaveBalance(
+                staff_id=staff.id,
+                leave_type=leave_type,
+                entitled_days=entitled_days,
+                used_days=0.0,
+                carried_over=0.0,
+                year=current_year,
+            ))
+
     await db.commit()
     await db.refresh(staff)
 
