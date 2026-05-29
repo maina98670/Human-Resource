@@ -1,39 +1,56 @@
 """
-Seed script — run once to bootstrap the system.
-Creates: Super Admin user, sample branch, departments, and a test HR admin.
+Seed script — bootstraps the system with initial data.
+Run via: python scripts/seed.py
 
-Usage:
-    python scripts/seed.py
+Tables must already exist before this runs (start.sh handles that).
 """
 import asyncio
 import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.database import AsyncSessionLocal, create_tables
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from app.models.models import (
     User, Branch, Department, Staff,
-    UserRole, StaffCategory, EmploymentType
+    UserRole, StaffCategory, EmploymentType,
 )
 from app.utils.auth_utils import hash_password
 from datetime import date
 
 
-async def seed():
-    await create_tables()
-    async with AsyncSessionLocal() as db:
+def get_async_url() -> str:
+    """Build a valid asyncpg URL from whatever env vars are set."""
+    url = os.environ.get("DATABASE_URL", "")
+    if not url:
+        raise RuntimeError("DATABASE_URL env var is not set")
+    # Normalise to postgresql+asyncpg:// with ssl=require
+    for prefix in ("postgresql://", "postgres://", "postgresql+asyncpg://"):
+        if url.startswith(prefix):
+            url = "postgresql+asyncpg://" + url[len(prefix):]
+            break
+    # Swap sslmode=require → ssl=require (asyncpg syntax)
+    url = url.replace("sslmode=require", "ssl=require")
+    return url
 
-        # ── Skip if already seeded ────────────────────────────────
+
+async def seed():
+    db_url = get_async_url()
+    engine = create_async_engine(db_url, echo=False, pool_pre_ping=True)
+    SessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession,
+                                      expire_on_commit=False, autoflush=False)
+
+    async with SessionLocal() as db:
+        # ── Check if already seeded ──────────────────────────────────────────
         result = await db.execute(select(User).limit(1))
         if result.scalar_one_or_none():
             print("✅ Database already seeded — skipping.")
+            await engine.dispose()
             return
 
         print("🌱 Seeding database...")
 
-        # ── Super Admin ──────────────────────────────────────────
+        # ── Super Admin ──────────────────────────────────────────────────────
         super_admin = User(
             email="superadmin@hospitalhr.com",
             phone="+254700000001",
@@ -44,9 +61,9 @@ async def seed():
         )
         db.add(super_admin)
         await db.flush()
-        print(f"  ✅ Super Admin: superadmin@hospitalhr.com / Admin@1234!")
+        print("  ✅ Super Admin: superadmin@hospitalhr.com / Admin@1234!")
 
-        # ── Main Branch ──────────────────────────────────────────
+        # ── Main Branch ──────────────────────────────────────────────────────
         branch = Branch(
             name="Nairobi Main Hospital",
             code="NBI-001",
@@ -59,18 +76,18 @@ async def seed():
         await db.flush()
         print(f"  ✅ Branch: {branch.name} ({branch.code})")
 
-        # ── Departments ──────────────────────────────────────────
+        # ── Departments ──────────────────────────────────────────────────────
         departments_data = [
-            ("Emergency & Casualty", "EMG", StaffCategory.CLINICAL, 4),
-            ("ICU", "ICU", StaffCategory.CLINICAL, 3),
-            ("Maternity", "MAT", StaffCategory.CLINICAL, 3),
-            ("Pharmacy", "PHM", StaffCategory.CLINICAL, 2),
-            ("Laboratory", "LAB", StaffCategory.CLINICAL, 2),
-            ("Radiology", "RAD", StaffCategory.CLINICAL, 1),
-            ("Administration", "ADM", StaffCategory.ADMINISTRATIVE, 2),
-            ("Medical Records", "MRD", StaffCategory.ADMINISTRATIVE, 1),
-            ("Housekeeping", "HSK", StaffCategory.SUPPORT, 3),
-            ("Security", "SEC", StaffCategory.SUPPORT, 2),
+            ("Emergency & Casualty", "EMG", StaffCategory.CLINICAL,       4),
+            ("ICU",                  "ICU", StaffCategory.CLINICAL,        3),
+            ("Maternity",            "MAT", StaffCategory.CLINICAL,        3),
+            ("Pharmacy",             "PHM", StaffCategory.CLINICAL,        2),
+            ("Laboratory",           "LAB", StaffCategory.CLINICAL,        2),
+            ("Radiology",            "RAD", StaffCategory.CLINICAL,        1),
+            ("Administration",       "ADM", StaffCategory.ADMINISTRATIVE,  2),
+            ("Medical Records",      "MRD", StaffCategory.ADMINISTRATIVE,  1),
+            ("Housekeeping",         "HSK", StaffCategory.SUPPORT,         3),
+            ("Security",             "SEC", StaffCategory.SUPPORT,         2),
         ]
 
         depts = {}
@@ -88,7 +105,7 @@ async def seed():
         await db.flush()
         print(f"  ✅ {len(departments_data)} departments created")
 
-        # ── HR Admin ─────────────────────────────────────────────
+        # ── HR Admin ─────────────────────────────────────────────────────────
         hr_user = User(
             email="hr@hospitalhr.com",
             phone="+254700000002",
@@ -118,9 +135,9 @@ async def seed():
             hire_date=date(2020, 1, 15),
         )
         db.add(hr_staff)
-        print(f"  ✅ HR Admin: hr@hospitalhr.com / HRAdmin@1234!")
+        print("  ✅ HR Admin: hr@hospitalhr.com / HRAdmin@1234!")
 
-        # ── Finance Admin ─────────────────────────────────────────
+        # ── Finance Admin ─────────────────────────────────────────────────────
         finance_user = User(
             email="finance@hospitalhr.com",
             phone="+254700000003",
@@ -131,14 +148,17 @@ async def seed():
             is_verified=True,
         )
         db.add(finance_user)
-        print(f"  ✅ Finance Admin: finance@hospitalhr.com / Finance@1234!")
+        print("  ✅ Finance Admin: finance@hospitalhr.com / Finance@1234!")
 
+        # ── Commit everything ─────────────────────────────────────────────────
         await db.commit()
         print("\n🎉 Seed complete! System is ready.")
         print("\n📋 Login credentials:")
         print("   Super Admin : superadmin@hospitalhr.com / Admin@1234!")
         print("   HR Admin    : hr@hospitalhr.com         / HRAdmin@1234!")
         print("   Finance     : finance@hospitalhr.com    / Finance@1234!")
+
+    await engine.dispose()
 
 
 if __name__ == "__main__":
