@@ -50,6 +50,55 @@ class AttendanceMarkRequest(BaseModel):
     checked_out_at: Optional[datetime] = None
 
 
+@router.get("/", summary="List shifts for a department and date range")
+async def list_shifts(
+    department_id: uuid.UUID = Query(...),
+    from_date: date = Query(default=None),
+    to_date: date = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    conditions = [Shift.department_id == department_id]
+    if from_date:
+        conditions.append(Shift.shift_date >= from_date)
+    if to_date:
+        conditions.append(Shift.shift_date <= to_date)
+
+    result = await db.execute(
+        select(Shift).where(and_(*conditions)).order_by(Shift.shift_date, Shift.start_time)
+    )
+    shifts = result.scalars().all()
+
+    out = []
+    for shift in shifts:
+        asgn_result = await db.execute(
+            select(ShiftAssignment, Staff)
+            .join(Staff, ShiftAssignment.staff_id == Staff.id)
+            .where(ShiftAssignment.shift_id == shift.id)
+        )
+        asgn_rows = asgn_result.all()
+        out.append({
+            "shift_id": str(shift.id),
+            "date": str(shift.shift_date),
+            "shift_type": shift.shift_type.value,
+            "start_time": shift.start_time,
+            "end_time": shift.end_time,
+            "min_staff": shift.min_staff,
+            "notes": shift.notes,
+            "assigned_count": len(asgn_rows),
+            "is_understaffed": len(asgn_rows) < shift.min_staff,
+            "staff": [
+                {
+                    "staff_id": str(row.Staff.id),
+                    "name": f"{row.Staff.first_name} {row.Staff.last_name}",
+                    "attendance": row.ShiftAssignment.attendance_status,
+                }
+                for row in asgn_rows
+            ],
+        })
+    return {"shifts": out, "total": len(out)}
+
+
 @router.post("/", summary="Create a shift")
 async def create_shift(
     payload: ShiftCreateRequest,
@@ -97,17 +146,6 @@ async def assign_staff(
         # Fatigue check
         if staff.fatigue_score > 70:
             warnings.append(f"{staff.first_name} {staff.last_name} has high fatigue score ({staff.fatigue_score})")
-
-        # Check for expired credentials (clinical staff)
-        if staff.category.value == "clinical":
-            cred_result = await db.execute(
-                select(func.count()).where(
-                    and_(
-                        Staff.id == staff_id,
-                        # subquery: any active credential exists
-                    )
-                )
-            )
 
         # Check for duplicate assignment
         dup_check = await db.execute(
@@ -161,7 +199,6 @@ async def get_rota(
 
     rota = []
     for shift in shifts:
-        # Get assignments
         asgn_result = await db.execute(
             select(ShiftAssignment, Staff)
             .join(Staff, ShiftAssignment.staff_id == Staff.id)
@@ -271,7 +308,6 @@ async def approve_swap(
         swap.status = "approved"
         swap.approved_by_id = current_user.id
 
-        # Execute the swap in assignments
         req_asgn = await db.execute(
             select(ShiftAssignment).where(
                 and_(
