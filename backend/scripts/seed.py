@@ -59,6 +59,7 @@ async def seed():
         # ── Super Admin — ngoyaisaac05@gmail.com ────────────────────────────
         super_admin = User(
             email="ngoyaisaac05@gmail.com",
+            phone="+254700000001",
             hashed_password=hashed_default,
             role=UserRole.SUPER_ADMIN,
             is_active=True,
@@ -113,6 +114,7 @@ async def seed():
         # ── HR Admin — beryl9860@gmail.com ───────────────────────────────────
         hr_user = User(
             email="beryl9860@gmail.com",
+            phone="+254700000002",
             hashed_password=hashed_default,
             role=UserRole.HR_ADMIN,
             branch_id=branch.id,
@@ -132,7 +134,7 @@ async def seed():
             date_of_birth=date(1990, 1, 1),
             gender="Female",
             national_id="00000001",
-            personal_phone="",
+            personal_phone="+254700000002",
             category=StaffCategory.ADMINISTRATIVE,
             employment_type=EmploymentType.PERMANENT,
             job_title="HR Manager",
@@ -144,6 +146,7 @@ async def seed():
         # ── Finance Admin — sheilawekesa75@gmail.com ─────────────────────────
         finance_user = User(
             email="sheilawekesa75@gmail.com",
+            phone="+254700000003",
             hashed_password=hashed_default,
             role=UserRole.FINANCE_ADMIN,
             branch_id=branch.id,
