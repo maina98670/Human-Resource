@@ -34,6 +34,10 @@ def get_async_url() -> str:
     return url
 
 
+# ── Default password shared by all seeded accounts ──────────────────────────
+DEFAULT_PASSWORD = "12345678"
+
+
 async def seed():
     db_url = get_async_url()
     engine = create_async_engine(db_url, echo=False, pool_pre_ping=True)
@@ -50,18 +54,19 @@ async def seed():
 
         print("🌱 Seeding database...")
 
-        # ── Super Admin ──────────────────────────────────────────────────────
+        hashed_default = hash_password(DEFAULT_PASSWORD)
+
+        # ── Super Admin — ngoyaisaac05@gmail.com ────────────────────────────
         super_admin = User(
-            email="superadmin@hospitalhr.com",
-            phone="+254700000001",
-            hashed_password=hash_password("Admin@1234!"),
+            email="ngoyaisaac05@gmail.com",
+            hashed_password=hashed_default,
             role=UserRole.SUPER_ADMIN,
             is_active=True,
             is_verified=True,
         )
         db.add(super_admin)
         await db.flush()
-        print("  ✅ Super Admin: superadmin@hospitalhr.com / Admin@1234!")
+        print(f"  ✅ Super Admin : ngoyaisaac05@gmail.com / {DEFAULT_PASSWORD}")
 
         # ── Main Branch ──────────────────────────────────────────────────────
         branch = Branch(
@@ -105,11 +110,10 @@ async def seed():
         await db.flush()
         print(f"  ✅ {len(departments_data)} departments created")
 
-        # ── HR Admin ─────────────────────────────────────────────────────────
+        # ── HR Admin — beryl9860@gmail.com ───────────────────────────────────
         hr_user = User(
-            email="hr@hospitalhr.com",
-            phone="+254700000002",
-            hashed_password=hash_password("HRAdmin@1234!"),
+            email="beryl9860@gmail.com",
+            hashed_password=hashed_default,
             role=UserRole.HR_ADMIN,
             branch_id=branch.id,
             is_active=True,
@@ -123,40 +127,39 @@ async def seed():
             branch_id=branch.id,
             department_id=depts["ADM"].id,
             staff_number="NBI-00001",
-            first_name="Grace",
-            last_name="Wanjiku",
-            date_of_birth=date(1985, 3, 14),
+            first_name="Beryl",
+            last_name="",
+            date_of_birth=date(1990, 1, 1),
             gender="Female",
-            national_id="12345678",
-            personal_phone="+254700000002",
+            national_id="00000001",
+            personal_phone="",
             category=StaffCategory.ADMINISTRATIVE,
             employment_type=EmploymentType.PERMANENT,
             job_title="HR Manager",
-            hire_date=date(2020, 1, 15),
+            hire_date=date(2024, 1, 1),
         )
         db.add(hr_staff)
-        print("  ✅ HR Admin: hr@hospitalhr.com / HRAdmin@1234!")
+        print(f"  ✅ HR Admin    : beryl9860@gmail.com / {DEFAULT_PASSWORD}")
 
-        # ── Finance Admin ─────────────────────────────────────────────────────
+        # ── Finance Admin — sheilawekesa75@gmail.com ─────────────────────────
         finance_user = User(
-            email="finance@hospitalhr.com",
-            phone="+254700000003",
-            hashed_password=hash_password("Finance@1234!"),
+            email="sheilawekesa75@gmail.com",
+            hashed_password=hashed_default,
             role=UserRole.FINANCE_ADMIN,
             branch_id=branch.id,
             is_active=True,
             is_verified=True,
         )
         db.add(finance_user)
-        print("  ✅ Finance Admin: finance@hospitalhr.com / Finance@1234!")
+        print(f"  ✅ Finance Admin: sheilawekesa75@gmail.com / {DEFAULT_PASSWORD}")
 
         # ── Commit everything ─────────────────────────────────────────────────
         await db.commit()
         print("\n🎉 Seed complete! System is ready.")
         print("\n📋 Login credentials:")
-        print("   Super Admin : superadmin@hospitalhr.com / Admin@1234!")
-        print("   HR Admin    : hr@hospitalhr.com         / HRAdmin@1234!")
-        print("   Finance     : finance@hospitalhr.com    / Finance@1234!")
+        print(f"   Super Admin  : ngoyaisaac05@gmail.com     / {DEFAULT_PASSWORD}")
+        print(f"   HR Admin     : beryl9860@gmail.com        / {DEFAULT_PASSWORD}")
+        print(f"   Finance Admin: sheilawekesa75@gmail.com   / {DEFAULT_PASSWORD}")
 
     await engine.dispose()
 
