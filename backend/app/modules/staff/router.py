@@ -25,7 +25,7 @@ class StaffCreateRequest(BaseModel):
     # Auth
     email: EmailStr
     phone: str
-    temp_password: str
+    temp_password: str = "12345678"
 
     # Identity
     first_name: str
