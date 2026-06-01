@@ -12,8 +12,10 @@ from app.config import settings
 from app.database import engine, Base
 from app.models.models import *  # noqa — populate metadata
 
-# All tables this HR schema owns, in safe drop order (dependents first)
-HR_TABLES = [
+from sqlalchemy import text
+
+# Drop order: dependents first, then parents
+DROP_TABLES = [
     'audit_logs',
     'wellness_checkins',
     'notifications',
@@ -33,10 +35,7 @@ HR_TABLES = [
     'users',
     'departments',
     'branches',
-]
-
-# Stale tables that may exist from a previous project (e.g. MamaCare)
-STALE_TABLES = [
+    # Stale tables from other projects (MamaCare etc.)
     'alerts',
     'ai_analysis',
     'patient_vitals',
@@ -45,46 +44,39 @@ STALE_TABLES = [
     'admins',
 ]
 
-# Stale enum types from previous projects
-STALE_TYPES = [
+# All enum type names to drop (own + stale from other projects)
+DROP_TYPES = [
     'userrole',
+    'employmenttype',
+    'staffcategory',
+    'clinicalsubrole',
+    'leavestatus',
+    'leavetype',
+    'shifttype',
+    'swapstatus',
+    'alertstatus',
     'triage_level',
     'platform_type',
     'user_role',
     'alert_status',
 ]
 
-from sqlalchemy import text
-
 async def migrate():
     async with engine.begin() as conn:
-        # 1. Drop stale tables from previous projects
-        for t in STALE_TABLES:
-            await conn.execute(text(f'DROP TABLE IF EXISTS {t} CASCADE'))
-        print('  Dropped stale tables.')
 
-        # 2. Drop stale enum types
-        for typ in STALE_TYPES:
+        # 1. Drop all tables (CASCADE handles FK constraints)
+        for t in DROP_TABLES:
+            await conn.execute(text(f'DROP TABLE IF EXISTS \"{t}\" CASCADE'))
+        print('  Dropped all tables.')
+
+        # 2. Drop all enum types
+        for typ in DROP_TYPES:
             await conn.execute(text(f'DROP TYPE IF EXISTS {typ} CASCADE'))
-        print('  Dropped stale enum types.')
+        print('  Dropped all enum types.')
 
-        # 3. Check if users table has wrong schema (MamaCare leftover)
-        result = await conn.execute(text(\"\"\"
-            SELECT column_name FROM information_schema.columns
-            WHERE table_name = 'users' AND column_name = 'hashed_password'
-        \"\"\"))
-        has_correct_col = result.fetchone()
-
-        if not has_correct_col:
-            # users table exists but has wrong schema — drop all HR tables and recreate
-            print('  Detected stale HR table schema — dropping for fresh creation...')
-            for t in HR_TABLES:
-                await conn.execute(text(f'DROP TABLE IF EXISTS {t} CASCADE'))
-            print('  Dropped all HR tables.')
-
-        # 4. Create all HR tables from models (skips tables that already exist)
+        # 3. Recreate everything cleanly from models
         await conn.run_sync(Base.metadata.create_all)
-        print('  Schema migration complete.')
+        print('  Schema created successfully.')
 
     await engine.dispose()
 
